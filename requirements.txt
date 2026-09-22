@@ -1,5 +1,2 @@
-fastapi
-uvicorn
+streamlit
 yt-dlp
-python-multipart
-
