@@ -6,7 +6,7 @@ import subprocess
 
 st.set_page_config(page_title="CapCut Clip Slicer", page_icon="⚡", layout="centered")
 
-# Custom Dark Theme Styling
+# Custom Styling
 st.markdown("""
 <style>
     .stApp { background-color: #0b0f19; color: #f8fafc; }
@@ -17,12 +17,17 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 st.title("⚡ CapCut Clip Slicer")
-st.caption("Auto Timestamp Parser &bull; Ultra-Fast Slicing &bull; 1080p CapCut Ready (H.264/AAC)")
+st.caption("Auto Timestamp Parser • Ultra-Fast Slicing • 1080p CapCut Ready (H.264/AAC)")
 
-# 1. Video URL Input
+# Safely write cookies from private Streamlit Secrets if present
+cookie_file = None
+if "YOUTUBE_COOKIES" in st.secrets:
+    cookie_file = "/tmp/cookies.txt"
+    with open(cookie_file, "w", encoding="utf-8") as f:
+        f.write(st.secrets["YOUTUBE_COOKIES"])
+
 video_url = st.text_input("1. Paste YouTube Video Link", placeholder="https://www.youtube.com/watch?v=...")
 
-# 2. Raw Hooks & Timestamps Input
 st.write("---")
 col_title, col_sample = st.columns([3, 1])
 with col_title:
@@ -63,7 +68,6 @@ with col_sample:
 default_text = st.session_state.get("raw_clips", "")
 raw_input = st.text_area("Ranked clips text", value=default_text, height=160, label_visibility="collapsed")
 
-# Auto-format helper: converts 1500 -> 15:00, 010400 -> 01:04:00
 def format_time_str(val: str) -> str:
     digits = re.sub(r'[^0-9]', '', str(val))
     if not digits:
@@ -76,9 +80,9 @@ def format_time_str(val: str) -> str:
         return f"{digits[:-4].zfill(2)}:{digits[-4:-2]}:{digits[-2:]}"
 
 def clean_filename(text: str) -> str:
-    return re.sub(r'[^a-zA-Z0-9_\- ]', '', text).strip().replace(' ', '_')
+    cleaned = re.sub(r'[^\w\s-]', '', text).strip()
+    return re.sub(r'[-\s]+', '_', cleaned)
 
-# Parse clips from pasted text
 parsed_clips = []
 if raw_input.strip():
     lines = [l.strip() for l in raw_input.split('\n') if l.strip()]
@@ -89,7 +93,7 @@ if raw_input.strip():
             if i > 0 and lines[i-1].isdigit():
                 rank = int(lines[i-1])
             
-            title = f"Clip {rank}"
+            title = f"Clip_{rank}"
             if i + 1 < len(lines) and not lines[i+1].isdigit() and '–' not in lines[i+1] and '-' not in lines[i+1]:
                 title = lines[i+1]
 
@@ -100,7 +104,6 @@ if raw_input.strip():
                 "end": format_time_str(time_match.group(2))
             })
 
-# 3. Clip Selection & Batch Controls
 if parsed_clips:
     st.write("---")
     st.write("### 3. Choose How Many Clips to Download")
@@ -113,7 +116,6 @@ if parsed_clips:
     
     st.info(f"Selected: **{selected_count} of {total} clips**")
     
-    # Render editable cards
     selected_clips = []
     for idx, c in enumerate(parsed_clips[:selected_count]):
         with st.container():
@@ -121,7 +123,6 @@ if parsed_clips:
             with c1:
                 clip_title = st.text_input(f"#{c['rank']} Hook", value=c['title'], key=f"title_{idx}")
             with c2:
-                # typing 1500 automatically formats to 15:00 on change
                 start_val = st.text_input(f"Start", value=c['start'], key=f"start_{idx}")
                 start_fmt = format_time_str(start_val)
             with c3:
@@ -137,7 +138,7 @@ if parsed_clips:
 
     st.write("---")
     if st.button("🚀 Srv / Cut & Download Selected Clips for CapCut"):
-        if not video_url:
+        if not video_url.strip():
             st.error("Please enter a YouTube video URL first!")
         else:
             status_text = st.empty()
@@ -145,32 +146,36 @@ if parsed_clips:
             out_dir = "/tmp/capcut_clips"
             os.makedirs(out_dir, exist_ok=True)
             
-            # Clean previous clips
             for f in os.listdir(out_dir):
                 try: os.remove(os.path.join(out_dir, f))
                 except: pass
 
             downloaded_files = []
+            errors = []
+
             for i, clip in enumerate(selected_clips):
-                status_text.write(f"⚡ Downloading & slicing section **#{clip['rank']}**: {clip['title']} ({clip['start']} &rarr; {clip['end']})...")
-                safe_name = clean_filename(clip['title'])
+                status_text.write(f"⚡ Slicing **#{clip['rank']}**: {clip['title']} ({clip['start']} → {clip['end']})...")
+                safe_name = clean_filename(clip['title']) or f"clip_{clip['rank']}"
                 file_path = os.path.join(out_dir, f"{clip['rank']:02d}_{safe_name}.mp4")
 
-                # Ultra-fast yt-dlp section download directly in CapCut-supported H.264/AAC
                 cmd = [
                     "yt-dlp",
-                    "--extractor-args", "youtube:player_client=android,web",
+                    *(["--cookies", cookie_file] if cookie_file else ["--extractor-args", "youtube:player_client=ios,mweb"]),
                     "--download-sections", f"*{clip['start']}-{clip['end']}",
                     "--force-keyframes-at-cuts",
-                    "-f", "bv*[ext=mp4]+ba[ext=m4a]/b[ext=mp4]/best",
+                    "-f", "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best",
                     "--postprocessor-args", "ffmpeg:-c:v libx264 -pix_fmt yuv420p -c:a aac -b:a 192k -movflags +faststart",
                     "-o", file_path,
-                    video_url
+                    video_url.strip()
                 ]
-                subprocess.run(cmd, capture_output=True, text=True)
+
+                res = subprocess.run(cmd, capture_output=True, text=True)
                 
                 if os.path.exists(file_path):
                     downloaded_files.append(file_path)
+                else:
+                    errors.append(f"Clip #{clip['rank']}: {res.stderr[-250:] if res.stderr else 'Download failed'}")
+
                 progress_bar.progress((i + 1) / len(selected_clips))
 
             if downloaded_files:
@@ -179,14 +184,15 @@ if parsed_clips:
                     for f in downloaded_files:
                         zipf.write(f, arcname=os.path.basename(f))
                 
-                status_text.success("✅ Clips cut and optimized successfully for CapCut!")
+                status_text.success("✅ Clips cut and ready for CapCut!")
                 with open(zip_path, "rb") as zf:
                     st.download_button(
-                        label="📥 Download All Clips (.zip)",
+                        label="📥 Download CapCut_Clips.zip",
                         data=zf,
                         file_name="CapCut_Clips.zip",
                         mime="application/zip"
                     )
-            else:
-                st.error("Failed to download sections. Please check the video link.")
-
+            
+            if errors:
+                for err in errors:
+                    st.error(err)
