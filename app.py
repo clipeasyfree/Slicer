@@ -3,6 +3,10 @@ import re
 import os
 import zipfile
 import subprocess
+import static_ffmpeg
+
+# Automatically installs and activates FFmpeg on the server
+static_ffmpeg.add_paths()
 
 st.set_page_config(page_title="CapCut Clip Slicer", page_icon="⚡", layout="centered")
 
@@ -150,7 +154,6 @@ if parsed_clips:
                 safe_name = clean_filename(clip['title']) or f"clip_{clip['rank']}"
                 file_path = os.path.join(out_dir, f"{clip['rank']:02d}_{safe_name}.mp4")
 
-                # android_vr client bypasses PO-Token, SABR, and cloud datacenter checks
                 cmd = [
                     "yt-dlp",
                     "--force-ipv4",
