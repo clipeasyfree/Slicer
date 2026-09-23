@@ -3,10 +3,12 @@ import re
 import os
 import zipfile
 import subprocess
-import static_ffmpeg
+import imageio_ffmpeg
 
-# Automatically installs and activates FFmpeg on the server
-static_ffmpeg.add_paths()
+# Get the built-in FFmpeg executable path without needing root permissions
+ffmpeg_exe = imageio_ffmpeg.get_ffmpeg_exe()
+ffmpeg_dir = os.path.dirname(ffmpeg_exe)
+os.environ["PATH"] = ffmpeg_dir + os.pathsep + os.environ.get("PATH", "")
 
 st.set_page_config(page_title="CapCut Clip Slicer", page_icon="⚡", layout="centered")
 
@@ -156,6 +158,7 @@ if parsed_clips:
 
                 cmd = [
                     "yt-dlp",
+                    "--ffmpeg-location", ffmpeg_exe,
                     "--force-ipv4",
                     "--no-check-certificates",
                     "--extractor-args", "youtube:player_client=android_vr,android;player_skip=configs,webpage",
