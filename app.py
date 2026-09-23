@@ -19,12 +19,34 @@ st.markdown("""
 st.title("⚡ CapCut Clip Slicer")
 st.caption("Auto Timestamp Parser • Ultra-Fast Slicing • 1080p CapCut Ready (H.264/AAC)")
 
-# Safely write cookies from private Streamlit Secrets if present
+# Cookie Sanitizer: Fixes the Python AssertionError: domain_specified == initial_dot
+def repair_cookies(raw_text: str) -> str:
+    cleaned_lines = ["# Netscape HTTP Cookie File\n# This file was generated automatically.\n\n"]
+    for line in raw_text.splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        # Split by tab or multiple spaces
+        parts = re.split(r'\t+|\s{2,}', line)
+        if len(parts) >= 7:
+            domain = parts[0]
+            # Fix Python rule: if domain has leading dot, col 2 MUST be TRUE
+            has_dot = domain.startswith(".")
+            col2 = "TRUE" if has_dot else "FALSE"
+            path = parts[2]
+            secure = parts[3].upper() if parts[3].upper() in ["TRUE", "FALSE"] else "FALSE"
+            expires = parts[4]
+            name = parts[5]
+            value = parts[6] if len(parts) == 7 else " ".join(parts[6:])
+            cleaned_lines.append(f"{domain}\t{col2}\t{path}\t{secure}\t{expires}\t{name}\t{value}\n")
+    return "".join(cleaned_lines)
+
 cookie_file = None
 if "YOUTUBE_COOKIES" in st.secrets:
     cookie_file = "/tmp/cookies.txt"
+    repaired = repair_cookies(st.secrets["YOUTUBE_COOKIES"])
     with open(cookie_file, "w", encoding="utf-8") as f:
-        f.write(st.secrets["YOUTUBE_COOKIES"])
+        f.write(repaired)
 
 video_url = st.text_input("1. Paste YouTube Video Link", placeholder="https://www.youtube.com/watch?v=...")
 
@@ -163,7 +185,7 @@ if parsed_clips:
                     *(["--cookies", cookie_file] if cookie_file else ["--extractor-args", "youtube:player_client=ios,mweb"]),
                     "--download-sections", f"*{clip['start']}-{clip['end']}",
                     "--force-keyframes-at-cuts",
-                    "-f", "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best",
+                    "-f", "bv*[ext=mp4]+ba[ext=m4a]/bv*+ba/b",
                     "--postprocessor-args", "ffmpeg:-c:v libx264 -pix_fmt yuv420p -c:a aac -b:a 192k -movflags +faststart",
                     "-o", file_path,
                     video_url.strip()
