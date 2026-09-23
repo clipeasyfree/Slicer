@@ -6,7 +6,7 @@ import subprocess
 
 st.set_page_config(page_title="CapCut Clip Slicer", page_icon="⚡", layout="centered")
 
-# Custom Styling
+# Custom Dark Theme Styling
 st.markdown("""
 <style>
     .stApp { background-color: #0b0f19; color: #f8fafc; }
@@ -19,18 +19,16 @@ st.markdown("""
 st.title("⚡ CapCut Clip Slicer")
 st.caption("Auto Timestamp Parser • Ultra-Fast Slicing • 1080p CapCut Ready (H.264/AAC)")
 
-# Cookie Sanitizer: Fixes the Python AssertionError: domain_specified == initial_dot
+# Cookie Sanitizer
 def repair_cookies(raw_text: str) -> str:
     cleaned_lines = ["# Netscape HTTP Cookie File\n# This file was generated automatically.\n\n"]
     for line in raw_text.splitlines():
         line = line.strip()
         if not line or line.startswith("#"):
             continue
-        # Split by tab or multiple spaces
         parts = re.split(r'\t+|\s{2,}', line)
         if len(parts) >= 7:
             domain = parts[0]
-            # Fix Python rule: if domain has leading dot, col 2 MUST be TRUE
             has_dot = domain.startswith(".")
             col2 = "TRUE" if has_dot else "FALSE"
             path = parts[2]
@@ -180,12 +178,17 @@ if parsed_clips:
                 safe_name = clean_filename(clip['title']) or f"clip_{clip['rank']}"
                 file_path = os.path.join(out_dir, f"{clip['rank']:02d}_{safe_name}.mp4")
 
+                # Bypasses SABR by routing through TV and embedded client protocols
                 cmd = [
                     "yt-dlp",
-                    *(["--cookies", cookie_file] if cookie_file else ["--extractor-args", "youtube:player_client=ios,mweb"]),
+                    "--force-ipv4",
+                    "--no-check-certificates",
+                    *(["--cookies", cookie_file] if cookie_file else []),
+                    "--extractor-args", "youtube:player_client=tv,web_embedded,ios;player_skip=webpage",
                     "--download-sections", f"*{clip['start']}-{clip['end']}",
                     "--force-keyframes-at-cuts",
-                    "-f", "bv*[ext=mp4]+ba[ext=m4a]/bv*+ba/b",
+                    "-f", "bestvideo*+bestaudio/best",
+                    "--merge-output-format", "mp4",
                     "--postprocessor-args", "ffmpeg:-c:v libx264 -pix_fmt yuv420p -c:a aac -b:a 192k -movflags +faststart",
                     "-o", file_path,
                     video_url.strip()
