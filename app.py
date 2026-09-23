@@ -6,7 +6,6 @@ import subprocess
 
 st.set_page_config(page_title="CapCut Clip Slicer", page_icon="⚡", layout="centered")
 
-# Custom Dark Theme Styling
 st.markdown("""
 <style>
     .stApp { background-color: #0b0f19; color: #f8fafc; }
@@ -19,37 +18,8 @@ st.markdown("""
 st.title("⚡ CapCut Clip Slicer")
 st.caption("Auto Timestamp Parser • Ultra-Fast Slicing • 1080p CapCut Ready (H.264/AAC)")
 
-# Cookie Sanitizer: Formats netscape cookies to satisfy Python domain rules
-def repair_cookies(raw_text: str) -> str:
-    cleaned_lines = ["# Netscape HTTP Cookie File\n# This file was generated automatically.\n\n"]
-    for line in raw_text.splitlines():
-        line = line.strip()
-        if not line or line.startswith("#"):
-            continue
-        parts = re.split(r'\t+|\s{2,}', line)
-        if len(parts) >= 7:
-            domain = parts[0]
-            has_dot = domain.startswith(".")
-            col2 = "TRUE" if has_dot else "FALSE"
-            path = parts[2]
-            secure = parts[3].upper() if parts[3].upper() in ["TRUE", "FALSE"] else "FALSE"
-            expires = parts[4]
-            name = parts[5]
-            value = parts[6] if len(parts) == 7 else " ".join(parts[6:])
-            cleaned_lines.append(f"{domain}\t{col2}\t{path}\t{secure}\t{expires}\t{name}\t{value}\n")
-    return "".join(cleaned_lines)
-
-cookie_file = None
-if "YOUTUBE_COOKIES" in st.secrets:
-    cookie_file = "/tmp/cookies.txt"
-    repaired = repair_cookies(st.secrets["YOUTUBE_COOKIES"])
-    with open(cookie_file, "w", encoding="utf-8") as f:
-        f.write(repaired)
-
-# 1. Video URL Input
 video_url = st.text_input("1. Paste YouTube Video Link", placeholder="https://www.youtube.com/watch?v=...")
 
-# 2. Raw Hooks & Timestamps Input
 st.write("---")
 col_title, col_sample = st.columns([3, 1])
 with col_title:
@@ -90,7 +60,6 @@ with col_sample:
 default_text = st.session_state.get("raw_clips", "")
 raw_input = st.text_area("Ranked clips text", value=default_text, height=160, label_visibility="collapsed")
 
-# Auto-format helper: converts 1500 -> 15:00, 010400 -> 01:04:00
 def format_time_str(val: str) -> str:
     digits = re.sub(r'[^0-9]', '', str(val))
     if not digits:
@@ -106,7 +75,6 @@ def clean_filename(text: str) -> str:
     cleaned = re.sub(r'[^\w\s-]', '', text).strip()
     return re.sub(r'[-\s]+', '_', cleaned)
 
-# Parse clips from pasted text
 parsed_clips = []
 if raw_input.strip():
     lines = [l.strip() for l in raw_input.split('\n') if l.strip()]
@@ -128,7 +96,6 @@ if raw_input.strip():
                 "end": format_time_str(time_match.group(2))
             })
 
-# 3. Clip Selection & Batch Controls
 if parsed_clips:
     st.write("---")
     st.write("### 3. Choose How Many Clips to Download")
@@ -183,17 +150,15 @@ if parsed_clips:
                 safe_name = clean_filename(clip['title']) or f"clip_{clip['rank']}"
                 file_path = os.path.join(out_dir, f"{clip['rank']:02d}_{safe_name}.mp4")
 
-                # Uses cookies with mobile web and creator clients to bypass SABR and bot checks
+                # android_vr client bypasses PO-Token, SABR, and cloud datacenter checks
                 cmd = [
                     "yt-dlp",
                     "--force-ipv4",
                     "--no-check-certificates",
-                    *(["--cookies", cookie_file] if cookie_file else []),
-                    "--extractor-args", "youtube:player_client=mweb,web_creator;player_skip=configs",
+                    "--extractor-args", "youtube:player_client=android_vr,android;player_skip=configs,webpage",
                     "--download-sections", f"*{clip['start']}-{clip['end']}",
                     "--force-keyframes-at-cuts",
-                    "-f", "bestvideo*+bestaudio/best",
-                    "--merge-output-format", "mp4",
+                    "-f", "b/best",
                     "--postprocessor-args", "ffmpeg:-c:v libx264 -pix_fmt yuv420p -c:a aac -b:a 192k -movflags +faststart",
                     "-o", file_path,
                     video_url.strip()
@@ -204,7 +169,7 @@ if parsed_clips:
                 if os.path.exists(file_path):
                     downloaded_files.append(file_path)
                 else:
-                    errors.append(f"Clip #{clip['rank']}: {res.stderr[-250:] if res.stderr else 'Download failed'}")
+                    errors.append(f"Clip #{clip['rank']}: {res.stderr[-200:] if res.stderr else 'Download failed'}")
 
                 progress_bar.progress((i + 1) / len(selected_clips))
 
